@@ -52,6 +52,25 @@ python main.py
 - **Python 3.11+**（[下載](https://www.python.org/downloads/)）
 - **FFmpeg**（[下載](https://www.gyan.dev/ffmpeg/builds/)）— 用於音影片切分
 
+#### macOS 特定需求
+
+推薦使用 [Homebrew](https://brew.sh/) 安裝 Python 和 FFmpeg：
+
+```bash
+# 安裝 Homebrew（若未安裝）
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# 安裝 Python 3.11
+brew install python@3.11
+
+# 安裝 FFmpeg
+brew install ffmpeg
+
+# 驗證
+python3.11 --version
+ffmpeg -version
+```
+
 ### FFmpeg 配置
 
 **選項 A：系統已安裝 FFmpeg**
@@ -84,27 +103,24 @@ notebooklm-splitter/
 
 ## 編譯成執行檔（可選）
 
-若想自行打包成獨立執行檔（開發用途）：
-
-### Windows
-
-```bash
-build.bat
-```
-
-會自動生成 `dist/NotebookLM切分工具.exe`
-
-### macOS / Linux
+若想自行打包成獨立執行檔（開發用途），執行以下命令會自動偵測你的作業系統並產生對應的應用程式：
 
 ```bash
 bash build.sh
 ```
 
-會自動生成 `dist/NotebookLM切分工具`（執行檔）
+### 各平台的打包結果
+
+| 平台 | 輸出格式 | 執行方式 |
+|------|--------|--------|
+| **macOS** | `dist/NotebookLM切分工具.app` | 雙擊 `.app` 檔案，或執行 `open dist/NotebookLM切分工具.app` |
+| **Linux** | `dist/NotebookLM切分工具` | 執行 `./dist/NotebookLM切分工具` |
+| **Windows** | `dist/NotebookLM切分工具.exe` | 雙擊 `.exe` 檔案 |
 
 > **注意：** 
 > - 首次打包需自動安裝 PyInstaller，請確保網路連線正常
-> - 打包檔案僅用於開發測試，不上傳至倉庫
+> - 打包檔案僅用於開發測試，不上傳至倉庫（見 `.gitignore`）
+> - macOS 可能需要在「系統偏好設定 > 安全性」允許執行應用程式
 
 ## 輸出範例
 
