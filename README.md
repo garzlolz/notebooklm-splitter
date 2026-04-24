@@ -5,7 +5,13 @@
 ## 快速開始
 
 ### Windows（推薦）
-直接下載打包好的執行檔：[NotebookLM切分工具.exe](releases/)
+直接執行打包好的執行檔：
+
+```
+dist/NotebookLM切分工具.exe  (165 MB)
+```
+
+> 首次執行可能需要數秒鐘加載，請耐心等待。
 
 ### macOS / Linux 或從原始碼執行
 
