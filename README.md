@@ -4,16 +4,7 @@
 
 ## 快速開始
 
-### Windows（推薦）
-直接執行打包好的執行檔：
-
-```
-dist/NotebookLM切分工具.exe  (165 MB)
-```
-
-> 首次執行可能需要數秒鐘加載，請耐心等待。
-
-### macOS / Linux 或從原始碼執行
+### 推薦方式 — 從源碼執行
 
 ```bash
 # 1. 克隆或下載本專案
@@ -22,13 +13,12 @@ cd notebooklm-splitter
 
 # 2. 建立虛擬環境
 python3.11 -m venv .venv
-source .venv/bin/activate  # macOS/Linux
-# .venv\Scripts\activate  # Windows
+source .venv/bin/activate
 
 # 3. 安裝依賴
 pip install -r requirements.txt
 
-# 4. 啟動
+# 4. 啟動 GUI
 python main.py
 ```
 
@@ -55,20 +45,14 @@ python main.py
 | 🎬 影片 | mp4、mkv、mov、avi、webm |
 | 📄 文字 | txt、md |
 
-## 安裝詳細步驟
+## 安裝與配置
 
 ### 系統需求
 
 - **Python 3.11+**（[下載](https://www.python.org/downloads/)）
-- **FFmpeg**（[下載](https://www.gyan.dev/ffmpeg/builds/)）（可選，但推薦用於音影片處理）
+- **FFmpeg**（[下載](https://www.gyan.dev/ffmpeg/builds/)）— 用於音影片切分
 
-### 1️⃣ 安裝 Python 套件
-
-```bash
-pip install -r requirements.txt
-```
-
-### 2️⃣ 配置 FFmpeg（音影片切分必需）
+### FFmpeg 配置
 
 **選項 A：系統已安裝 FFmpeg**
 
@@ -78,13 +62,13 @@ ffmpeg -version
 ffprobe -version
 ```
 
-**選項 B：下載 FFmpeg 到本專案**
+**選項 B：下載 FFmpeg 到本專案（推薦開發環境）**
 
 1. 下載：[ffmpeg-release-essentials.zip](https://www.gyan.dev/ffmpeg/builds/)
 2. 解壓縮
 3. 取出以下兩個檔案：
-   - `ffmpeg.exe`
-   - `ffprobe.exe`
+   - `ffmpeg.exe` 或 `ffmpeg`
+   - `ffprobe.exe` 或 `ffprobe`
 4. 放入本專案的 `assets/ffmpeg/` 資料夾
 
 目錄結構應為：
@@ -92,19 +76,15 @@ ffprobe -version
 notebooklm-splitter/
 ├── assets/
 │   └── ffmpeg/
-│       ├── ffmpeg.exe
-│       └── ffprobe.exe
+│       ├── ffmpeg         (或 ffmpeg.exe)
+│       └── ffprobe        (或 ffprobe.exe)
 ├── main.py
 └── ...
 ```
 
-### 3️⃣ 啟動
+## 編譯成執行檔（可選）
 
-```bash
-python main.py
-```
-
-## 編譯成執行檔（Windows 與 macOS/Linux）
+若想自行打包成獨立執行檔（開發用途）：
 
 ### Windows
 
@@ -122,7 +102,9 @@ bash build.sh
 
 會自動生成 `dist/NotebookLM切分工具`（執行檔）
 
-> **注意：** 首次打包需自動安裝 PyInstaller，請確保網路連線正常。
+> **注意：** 
+> - 首次打包需自動安裝 PyInstaller，請確保網路連線正常
+> - 打包檔案僅用於開發測試，不上傳至倉庫
 
 ## 輸出範例
 
