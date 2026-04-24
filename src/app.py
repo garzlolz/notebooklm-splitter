@@ -20,13 +20,13 @@ from src.utils.file_utils import (
 )
 
 ctk.set_appearance_mode("System")
-ctk.set_default_color_theme("blue")
+ctk.set_default_color_theme("green")
 
 _STATUS_COLOR = {
     JobStatus.PENDING: ("gray60", "gray40"),
-    JobStatus.RUNNING: ("dodger blue", "dodger blue"),
-    JobStatus.DONE: ("green3", "green3"),
-    JobStatus.ERROR: ("red3", "red3"),
+    JobStatus.RUNNING: ("cyan", "cyan"),
+    JobStatus.DONE: ("green2", "green2"),
+    JobStatus.ERROR: ("#FF6B6B", "#FF6B6B"),
 }
 
 _STATUS_TEXT = {
@@ -39,13 +39,13 @@ _STATUS_TEXT = {
 
 class FileRow(ctk.CTkFrame):
     def __init__(self, master, job: SplitJob, **kwargs):
-        super().__init__(master, corner_radius=6, **kwargs)
+        super().__init__(master, corner_radius=10, border_width=1, border_color=("gray80", "gray25"), **kwargs)
         self.job = job
         self.columnconfigure(1, weight=1)
 
-        # 第一行：檔名 + 大小
+        # 第一行：檔名 + 大小 + 選項
         name_frame = ctk.CTkFrame(self, fg_color="transparent")
-        name_frame.grid(row=0, column=0, columnspan=3, sticky="ew", padx=8, pady=(6, 2))
+        name_frame.grid(row=0, column=0, columnspan=3, sticky="ew", padx=12, pady=(10, 6))
         name_frame.columnconfigure(0, weight=1)
 
         self._name_lbl = ctk.CTkLabel(
@@ -58,10 +58,10 @@ class FileRow(ctk.CTkFrame):
         size_bytes = job.source_path.stat().st_size if job.source_path.exists() else 0
         self._size_lbl = ctk.CTkLabel(
             name_frame, text=human_size(size_bytes),
-            font=ctk.CTkFont(size=12),
+            font=ctk.CTkFont(size=11),
             text_color=("gray50", "gray60"),
         )
-        self._size_lbl.grid(row=0, column=1, sticky="e")
+        self._size_lbl.grid(row=0, column=1, sticky="e", padx=(12, 0))
 
         if is_video_file(job.source_path):
             self._m4a_var = ctk.BooleanVar(value=False)
@@ -69,7 +69,7 @@ class FileRow(ctk.CTkFrame):
                 name_frame, text="轉換為 m4a",
                 variable=self._m4a_var,
                 command=self._toggle_m4a,
-                font=ctk.CTkFont(size=12),
+                font=ctk.CTkFont(size=11),
             )
             self._m4a_cb.grid(row=0, column=2, padx=(12, 0), sticky="e")
         else:
@@ -77,18 +77,22 @@ class FileRow(ctk.CTkFrame):
             self._m4a_cb = None
 
         # 第二行：進度條 + 狀態
-        self._progress = ctk.CTkProgressBar(self, height=8)
+        progress_frame = ctk.CTkFrame(self, fg_color="transparent")
+        progress_frame.grid(row=1, column=0, columnspan=3, sticky="ew", padx=12, pady=(0, 10))
+        progress_frame.columnconfigure(0, weight=1)
+
+        self._progress = ctk.CTkProgressBar(progress_frame, height=6, corner_radius=3)
         self._progress.set(0)
-        self._progress.grid(row=1, column=0, columnspan=2, sticky="ew", padx=8, pady=2)
+        self._progress.grid(row=0, column=0, sticky="ew")
 
         self._status_lbl = ctk.CTkLabel(
-            self, text="等待中",
-            font=ctk.CTkFont(size=11),
+            progress_frame, text="等待中",
+            font=ctk.CTkFont(size=10),
             text_color=("gray50", "gray60"),
-            width=80,
+            width=70,
             anchor="e",
         )
-        self._status_lbl.grid(row=1, column=2, sticky="e", padx=(4, 8), pady=2)
+        self._status_lbl.grid(row=0, column=1, sticky="e", padx=(8, 0))
 
         self.grid_columnconfigure(0, weight=1)
 
@@ -101,48 +105,71 @@ class FileRow(ctk.CTkFrame):
     def update_status(self, text: str) -> None:
         self.after(0, lambda: self._status_lbl.configure(
             text=text,
-            text_color=("dodger blue", "dodger blue"),
+            text_color=("cyan", "cyan"),
         ))
 
     def update_progress(self, value: float) -> None:
         self.after(0, lambda: self._progress.set(value))
         self.after(0, lambda: self._status_lbl.configure(
             text=f"{int(value * 100)}%",
-            text_color=("dodger blue", "dodger blue"),
+            text_color=("cyan", "cyan"),
         ))
 
     def mark_done(self, parts: int) -> None:
         self.after(0, lambda: self._progress.set(1.0))
         self.after(0, lambda: self._status_lbl.configure(
             text=f"完成（{parts} 個）",
-            text_color=("green3", "green3"),
+            text_color=("green2", "green2"),
         ))
 
     def mark_error(self, msg: str) -> None:
         self.after(0, lambda: self._status_lbl.configure(
             text="錯誤",
-            text_color=("red3", "red3"),
+            text_color=("#FF6B6B", "#FF6B6B"),
         ))
-        self.after(0, lambda: self._progress.configure(progress_color="red3"))
+        self.after(0, lambda: self._progress.configure(progress_color="#FF6B6B"))
 
 
 class DropZone(ctk.CTkFrame):
     """可拖放檔案的區域，或點擊觸發選擇對話框。"""
 
     def __init__(self, master, on_files, **kwargs):
-        super().__init__(master, corner_radius=12, border_width=2, **kwargs)
+        super().__init__(master, corner_radius=14, border_width=2, **kwargs)
         self._on_files = on_files
 
+        # 內容框架
+        content = ctk.CTkFrame(self, fg_color="transparent")
+        content.pack(expand=True, fill="both", padx=20, pady=20)
+
+        # 圖標
+        icon_lbl = ctk.CTkLabel(
+            content,
+            text="📁",
+            font=("Arial", 48),
+        )
+        icon_lbl.pack(pady=(0, 8))
+
+        # 主文字
         self._label = ctk.CTkLabel(
-            self,
-            text="拖放檔案 / 資料夾到此處\n或點擊選擇檔案",
-            font=ctk.CTkFont(size=14),
+            content,
+            text="拖放檔案 / 資料夾到此處",
+            font=ctk.CTkFont(size=15, weight="bold"),
+        )
+        self._label.pack()
+
+        # 次級文字
+        sub_lbl = ctk.CTkLabel(
+            content,
+            text="或點擊選擇檔案",
+            font=ctk.CTkFont(size=12),
             text_color=("gray50", "gray60"),
         )
-        self._label.pack(expand=True)
+        sub_lbl.pack(pady=(4, 0))
 
         self.bind("<Button-1>", self._click)
         self._label.bind("<Button-1>", self._click)
+        icon_lbl.bind("<Button-1>", self._click)
+        sub_lbl.bind("<Button-1>", self._click)
 
         if _HAS_DND:
             self.drop_target_register(dnd.DND_FILES)  # type: ignore[attr-defined]
@@ -180,8 +207,8 @@ class App(ctk.CTk if not _HAS_DND else dnd.Tk):  # type: ignore[misc]
     def __init__(self):
         super().__init__()
         self.title("NotebookLM 檔案切分工具")
-        self.geometry("720x560")
-        self.minsize(600, 440)
+        self.geometry("750x620")
+        self.minsize(650, 500)
 
         if _HAS_DND:
             # 套用 CTk 主題到 tkinterdnd2 的 Tk 視窗
@@ -197,67 +224,90 @@ class App(ctk.CTk if not _HAS_DND else dnd.Tk):  # type: ignore[misc]
 
     def _build_ui(self):
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(1, weight=1)
+        self.rowconfigure(2, weight=1)
+
+        # 頂部標題
+        header = ctk.CTkFrame(self, fg_color="transparent")
+        header.grid(row=0, column=0, sticky="ew", padx=20, pady=(20, 8))
+        header.columnconfigure(0, weight=1)
+
+        title_lbl = ctk.CTkLabel(
+            header, text="NotebookLM 檔案切分工具",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            anchor="w"
+        )
+        title_lbl.grid(row=0, column=0, sticky="w")
 
         # 拖放區
         self._drop_zone = DropZone(
             self, on_files=self._add_files,
-            fg_color=("gray90", "gray17"),
-            border_color=("gray70", "gray35"),
-            height=110,
+            fg_color=("gray92", "gray14"),
+            border_color=("gray70", "gray30"),
+            height=140,
         )
-        self._drop_zone.grid(row=0, column=0, sticky="ew", padx=16, pady=(16, 8))
+        self._drop_zone.grid(row=1, column=0, sticky="ew", padx=20, pady=(0, 16))
 
         # 工作清單（可捲動）
         self._list_label = ctk.CTkLabel(
-            self, text="待切分清單", font=ctk.CTkFont(size=13, weight="bold"), anchor="w"
+            self, text="待切分清單",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            anchor="w"
         )
-        self._list_label.grid(row=1, column=0, sticky="nw", padx=20, pady=(4, 0))
+        self._list_label.grid(row=2, column=0, sticky="nw", padx=20, pady=(0, 10))
 
-        self._scroll = ctk.CTkScrollableFrame(self, label_text="")
-        self._scroll.grid(row=2, column=0, sticky="nsew", padx=16, pady=4)
+        self._scroll = ctk.CTkScrollableFrame(self, label_text="", corner_radius=10)
+        self._scroll.grid(row=3, column=0, sticky="nsew", padx=20, pady=(0, 12))
         self._scroll.columnconfigure(0, weight=1)
-        self.rowconfigure(2, weight=1)
+        self.rowconfigure(3, weight=1)
 
         self._empty_lbl = ctk.CTkLabel(
             self._scroll, text="尚未加入任何檔案",
             text_color=("gray60", "gray50"), font=ctk.CTkFont(size=12),
         )
-        self._empty_lbl.grid(row=0, column=0, pady=20)
+        self._empty_lbl.grid(row=0, column=0, pady=40)
 
         # 底部工具列
         bottom = ctk.CTkFrame(self, fg_color="transparent")
-        bottom.grid(row=3, column=0, sticky="ew", padx=16, pady=(4, 14))
+        bottom.grid(row=4, column=0, sticky="ew", padx=20, pady=(0, 16))
         bottom.columnconfigure(1, weight=1)
 
         self._clear_btn = ctk.CTkButton(
-            bottom, text="清除完成項目", width=130,
-            fg_color="transparent",
-            border_width=1,
-            text_color=("gray40", "gray70"),
+            bottom, text="清除完成項目", width=120,
+            fg_color=("gray75", "gray25"),
+            hover_color=("gray70", "gray20"),
+            text_color=("gray20", "gray80"),
+            border_width=0,
+            corner_radius=8,
             command=self._clear_done,
         )
-        self._clear_btn.grid(row=0, column=0, padx=(0, 8))
+        self._clear_btn.grid(row=0, column=0, padx=(0, 10))
 
         self._out_lbl = ctk.CTkLabel(
-            bottom, text="輸出：output/{日期}/{檔名}/",
-            font=ctk.CTkFont(size=11), text_color=("gray50", "gray60"), anchor="w",
+            bottom, text="📁 輸出：output/{日期}/{檔名}/",
+            font=ctk.CTkFont(size=11),
+            text_color=("gray50", "gray60"),
+            anchor="w",
         )
         self._out_lbl.grid(row=0, column=1, sticky="w")
 
         self._open_btn = ctk.CTkButton(
             bottom, text="開啟資料夾", width=100,
-            fg_color="transparent", border_width=1,
-            text_color=("gray40", "gray70"),
+            fg_color=("gray75", "gray25"),
+            hover_color=("gray70", "gray20"),
+            text_color=("gray20", "gray80"),
+            border_width=0,
+            corner_radius=8,
             command=self._open_output,
         )
-        self._open_btn.grid(row=0, column=2, padx=(8, 0))
+        self._open_btn.grid(row=0, column=2, padx=(8, 8))
 
         self._start_btn = ctk.CTkButton(
-            bottom, text="開始切分", width=110,
+            bottom, text="▶ 開始切分", width=110,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            corner_radius=8,
             command=self._start_all,
         )
-        self._start_btn.grid(row=0, column=3, padx=(8, 0))
+        self._start_btn.grid(row=0, column=3, padx=(0, 0))
 
     # ── 檔案管理 ─────────────────────────────────────────────
 
@@ -317,12 +367,12 @@ class App(ctk.CTk if not _HAS_DND else dnd.Tk):  # type: ignore[misc]
                 self._scroll, text="尚未加入任何檔案",
                 text_color=("gray60", "gray50"), font=ctk.CTkFont(size=12),
             )
-            self._empty_lbl.grid(row=0, column=0, pady=20)
+            self._empty_lbl.grid(row=0, column=0, pady=40)
             return
 
         for idx, job in enumerate(self._jobs):
-            row = FileRow(self._scroll, job, fg_color=("gray85", "gray20"))
-            row.grid(row=idx, column=0, sticky="ew", pady=3)
+            row = FileRow(self._scroll, job, fg_color=("gray88", "gray16"))
+            row.grid(row=idx, column=0, sticky="ew", pady=4)
             self._rows[id(job)] = row
 
             # 若已有狀態（重新整理後還原進度顯示）
