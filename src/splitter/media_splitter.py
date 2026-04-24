@@ -50,10 +50,14 @@ class MediaSplitter(BaseSplitter):
             output_suffix = src.suffix
 
             if job.convert_to_m4a and src.suffix.lower() in VIDEO_EXTENSIONS:
+                if job.on_status:
+                    job.on_status("轉換中…")
                 temp_m4a = job.output_dir / f"__converting__{src.stem}.m4a"
                 self._convert_to_m4a(src, temp_m4a)
                 src = temp_m4a
                 output_suffix = ".m4a"
+                if job.on_status:
+                    job.on_status("切分中…")
 
             try:
                 file_size = src.stat().st_size

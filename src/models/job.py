@@ -25,3 +25,4 @@ class SplitJob:
     on_progress: Optional[Callable[[float], None]] = field(default=None, repr=False)
     on_done: Optional[Callable[[int], None]] = field(default=None, repr=False)
     on_error: Optional[Callable[[str], None]] = field(default=None, repr=False)
+    on_status: Optional[Callable[[str], None]] = field(default=None, repr=False)

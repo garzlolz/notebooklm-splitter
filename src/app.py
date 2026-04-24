@@ -98,6 +98,12 @@ class FileRow(ctk.CTkFrame):
 
     # ── 回呼（從工作執行緒呼叫，需透過 after 切回主執行緒）──
 
+    def update_status(self, text: str) -> None:
+        self.after(0, lambda: self._status_lbl.configure(
+            text=text,
+            text_color=("dodger blue", "dodger blue"),
+        ))
+
     def update_progress(self, value: float) -> None:
         self.after(0, lambda: self._progress.set(value))
         self.after(0, lambda: self._status_lbl.configure(
@@ -285,10 +291,15 @@ class App(ctk.CTk if not _HAS_DND else dnd.Tk):  # type: ignore[misc]
     def _try_add(self, path: Path) -> str:
         if not is_supported(path):
             return "unsupported"
-        # 避免重複
         with self._lock:
             for j in self._jobs:
                 if j.source_path == path:
+                    if j.status in (JobStatus.DONE, JobStatus.ERROR):
+                        j.status = JobStatus.PENDING
+                        j.progress = 0.0
+                        j.parts_count = 0
+                        j.error_msg = None
+                        return "ok"
                     return "duplicate"
             out_dir = get_output_dir(path)
             job = SplitJob(source_path=path, output_dir=out_dir)
@@ -342,6 +353,7 @@ class App(ctk.CTk if not _HAS_DND else dnd.Tk):  # type: ignore[misc]
             job.on_progress = row.update_progress
             job.on_done = row.mark_done
             job.on_error = row.mark_error
+            job.on_status = row.update_status
             t = threading.Thread(target=self._run_job, args=(job,), daemon=True)
             t.start()
 
