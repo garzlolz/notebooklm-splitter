@@ -1,4 +1,5 @@
 import sys
+import platform
 from pathlib import Path
 
 
@@ -10,11 +11,18 @@ def _bundled(name: str) -> Path:
     return base / "assets" / "ffmpeg" / name
 
 
+def _exe(base_name: str) -> str:
+    """Return platform-appropriate binary name."""
+    if platform.system() == "Windows":
+        return base_name + ".exe"
+    return base_name
+
+
 def get_ffmpeg_path() -> str:
-    p = _bundled("ffmpeg.exe")
+    p = _bundled(_exe("ffmpeg"))
     return str(p) if p.exists() else "ffmpeg"
 
 
 def get_ffprobe_path() -> str:
-    p = _bundled("ffprobe.exe")
+    p = _bundled(_exe("ffprobe"))
     return str(p) if p.exists() else "ffprobe"

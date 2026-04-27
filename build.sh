@@ -25,11 +25,23 @@ rm -rf dist build "NotebookLM切分工具.spec" 2>/dev/null || true
 # 自動下載 FFmpeg 二進位（若尚未存在）
 mkdir -p assets/ffmpeg
 if [[ "$OSTYPE" == "darwin"* ]]; then
-    if ! command -v ffmpeg &>/dev/null && [[ ! -f "assets/ffmpeg/ffmpeg" ]]; then
-        echo "下載 FFmpeg (macOS)..."
-        brew install ffmpeg 2>/dev/null || {
-            echo "警告：無法自動安裝 FFmpeg，請手動安裝後再試。"
-        }
+    if [[ ! -f "assets/ffmpeg/ffmpeg" ]]; then
+        FFMPEG_BIN=$(command -v ffmpeg || true)
+        FFPROBE_BIN=$(command -v ffprobe || true)
+        if [[ -n "$FFMPEG_BIN" && -n "$FFPROBE_BIN" ]]; then
+            echo "複製系統 FFmpeg 至 assets/ffmpeg/..."
+            cp "$FFMPEG_BIN" assets/ffmpeg/ffmpeg
+            cp "$FFPROBE_BIN" assets/ffmpeg/ffprobe
+        else
+            echo "下載 FFmpeg (macOS)..."
+            brew install ffmpeg 2>/dev/null || {
+                echo "警告：無法自動安裝 FFmpeg，請手動安裝後再試。"
+            }
+            FFMPEG_BIN=$(command -v ffmpeg || true)
+            FFPROBE_BIN=$(command -v ffprobe || true)
+            [[ -n "$FFMPEG_BIN" ]] && cp "$FFMPEG_BIN" assets/ffmpeg/ffmpeg
+            [[ -n "$FFPROBE_BIN" ]] && cp "$FFPROBE_BIN" assets/ffmpeg/ffprobe
+        fi
     fi
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
     if ! command -v ffmpeg &>/dev/null && [[ ! -f "assets/ffmpeg/ffmpeg" ]]; then
