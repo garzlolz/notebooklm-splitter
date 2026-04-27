@@ -15,7 +15,8 @@ else
     OS="Unknown"
 fi
 
-echo "[1/3] 安裝 / 更新 PyInstaller..."
+echo "[1/3] 安裝 / 更新依賴與 PyInstaller..."
+python -m pip install --quiet -r requirements.txt
 python -m pip install --quiet --upgrade pyinstaller
 
 echo "[2/3] 清除舊的打包結果..."
@@ -60,8 +61,8 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     python -m PyInstaller --windowed --onedir \
       --name "NotebookLM切分工具" \
       --add-data "assets:assets" \
-      --collect-data tkinterdnd2 \
-      --collect-data customtkinter \
+      --collect-all tkinterdnd2 \
+      --collect-all customtkinter \
       main.py
     OUTPUT_PATH="dist/NotebookLM切分工具.app"
 else
@@ -70,8 +71,8 @@ else
     python -m PyInstaller --onefile --windowed \
       --name "NotebookLM切分工具" \
       --add-data "assets:assets" \
-      --collect-data tkinterdnd2 \
-      --collect-data customtkinter \
+      --collect-all tkinterdnd2 \
+      --collect-all customtkinter \
       main.py
     OUTPUT_PATH="dist/NotebookLM切分工具"
 fi
