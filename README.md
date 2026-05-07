@@ -18,7 +18,10 @@ source .venv/bin/activate
 # 3. 安裝依賴
 pip install -r requirements.txt
 
-# 4. 啟動 GUI
+# 4. 下載 FFmpeg（首次使用，僅 Windows）
+python setup_ffmpeg.py
+
+# 5. 啟動 GUI
 python main.py
 ```
 
@@ -81,14 +84,18 @@ ffmpeg -version
 ffprobe -version
 ```
 
-**選項 B：下載 FFmpeg 到本專案（推薦開發環境）**
+**選項 B：自動下載 FFmpeg 到本專案（推薦，僅 Windows）**
 
+```bash
+python setup_ffmpeg.py
+```
+
+腳本會自動從 [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) 下載並解壓縮 `ffmpeg.exe` 與 `ffprobe.exe` 到 `assets/ffmpeg/`。
+
+若要手動安裝，請：
 1. 下載：[ffmpeg-release-essentials.zip](https://www.gyan.dev/ffmpeg/builds/)
-2. 解壓縮
-3. 取出以下兩個檔案：
-   - `ffmpeg.exe` 或 `ffmpeg`
-   - `ffprobe.exe` 或 `ffprobe`
-4. 放入本專案的 `assets/ffmpeg/` 資料夾
+2. 解壓縮，取出 `ffmpeg.exe` 與 `ffprobe.exe`
+3. 放入本專案的 `assets/ffmpeg/` 資料夾
 
 目錄結構應為：
 ```
