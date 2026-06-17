@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import platform
 import subprocess
 import threading
 from pathlib import Path
@@ -22,6 +23,18 @@ from src.utils.file_utils import (
 ctk.set_appearance_mode("System")
 ctk.set_default_color_theme("green")
 
+# UI scaling for layout (keep at 1.0 to preserve default window size)
+UI_SCALE = 1.0
+
+# 選擇系統 UI 字型以改善字體銳利度（Windows 上偏好微軟正黑或 Segoe UI）
+if platform.system() == "Windows":
+    # Traditional Chinese Windows 會有 Microsoft JhengHei UI；若不存在，回退到 Segoe UI
+    FONT_FAMILY = "Microsoft JhengHei UI"
+    # 在某些系統上名稱可能不同，準備備援
+    _try_fallback = False
+else:
+    FONT_FAMILY = "Segoe UI"
+
 _STATUS_COLOR = {
     JobStatus.PENDING: ("gray60", "gray40"),
     JobStatus.RUNNING: ("cyan", "cyan"),
@@ -39,7 +52,9 @@ _STATUS_TEXT = {
 
 class FileRow(ctk.CTkFrame):
     def __init__(self, master, job: SplitJob, **kwargs):
-        super().__init__(master, corner_radius=10, border_width=1, border_color=("gray80", "gray25"), **kwargs)
+        scale = UI_SCALE
+        cr = max(1, int(round(10 * scale)))
+        super().__init__(master, corner_radius=cr, border_width=1, border_color=("gray80", "gray25"), **kwargs)
         self.job = job
         self.columnconfigure(1, weight=1)
 
@@ -50,7 +65,7 @@ class FileRow(ctk.CTkFrame):
 
         self._name_lbl = ctk.CTkLabel(
             name_frame, text=job.source_path.name,
-            font=ctk.CTkFont(size=13, weight="bold"),
+            font=ctk.CTkFont(family=FONT_FAMILY, size=max(8, int(round(13 * scale))), weight="bold"),
             anchor="w",
         )
         self._name_lbl.grid(row=0, column=0, sticky="w")
@@ -58,7 +73,7 @@ class FileRow(ctk.CTkFrame):
         size_bytes = job.source_path.stat().st_size if job.source_path.exists() else 0
         self._size_lbl = ctk.CTkLabel(
             name_frame, text=human_size(size_bytes),
-            font=ctk.CTkFont(size=11),
+            font=ctk.CTkFont(family=FONT_FAMILY, size=max(8, int(round(11 * scale)))),
             text_color=("gray50", "gray60"),
         )
         self._size_lbl.grid(row=0, column=1, sticky="e", padx=(12, 0))
@@ -69,7 +84,7 @@ class FileRow(ctk.CTkFrame):
                 name_frame, text="轉換為 m4a",
                 variable=self._m4a_var,
                 command=self._toggle_m4a,
-                font=ctk.CTkFont(size=11),
+                font=ctk.CTkFont(family=FONT_FAMILY, size=max(8, int(round(11 * scale)))),
             )
             self._m4a_cb.grid(row=0, column=2, padx=(12, 0), sticky="e")
         else:
@@ -81,13 +96,13 @@ class FileRow(ctk.CTkFrame):
         progress_frame.grid(row=1, column=0, columnspan=3, sticky="ew", padx=12, pady=(0, 10))
         progress_frame.columnconfigure(0, weight=1)
 
-        self._progress = ctk.CTkProgressBar(progress_frame, height=6, corner_radius=3)
+        self._progress = ctk.CTkProgressBar(progress_frame, height=max(4, int(round(6 * scale))), corner_radius=max(1, int(round(3 * scale))))
         self._progress.set(0)
         self._progress.grid(row=0, column=0, sticky="ew")
 
         self._status_lbl = ctk.CTkLabel(
             progress_frame, text="等待中",
-            font=ctk.CTkFont(size=10),
+            font=ctk.CTkFont(family=FONT_FAMILY, size=max(8, int(round(10 * scale)))),
             text_color=("gray50", "gray60"),
             width=70,
             anchor="e",
@@ -134,7 +149,8 @@ class DropZone(ctk.CTkFrame):
     """可拖放檔案的區域，或點擊觸發選擇對話框。"""
 
     def __init__(self, master, on_files, **kwargs):
-        super().__init__(master, corner_radius=14, border_width=2, **kwargs)
+        scale = UI_SCALE
+        super().__init__(master, corner_radius=max(4, int(round(14 * scale))), border_width=2, **kwargs)
         self._on_files = on_files
 
         # 內容框架
@@ -145,7 +161,7 @@ class DropZone(ctk.CTkFrame):
         icon_lbl = ctk.CTkLabel(
             content,
             text="📁",
-            font=("Arial", 48),
+            font=(FONT_FAMILY, max(18, int(round(48 * scale)))),
         )
         icon_lbl.pack(pady=(0, 8))
 
@@ -153,7 +169,7 @@ class DropZone(ctk.CTkFrame):
         self._label = ctk.CTkLabel(
             content,
             text="拖放檔案 / 資料夾到此處",
-            font=ctk.CTkFont(size=15, weight="bold"),
+            font=ctk.CTkFont(family=FONT_FAMILY, size=max(10, int(round(15 * scale))), weight="bold"),
         )
         self._label.pack()
 
@@ -161,7 +177,7 @@ class DropZone(ctk.CTkFrame):
         sub_lbl = ctk.CTkLabel(
             content,
             text="或點擊選擇檔案",
-            font=ctk.CTkFont(size=12),
+            font=ctk.CTkFont(family=FONT_FAMILY, size=max(8, int(round(12 * scale)))),
             text_color=("gray50", "gray60"),
         )
         sub_lbl.pack(pady=(4, 0))
@@ -207,8 +223,12 @@ class App(ctk.CTk if not _HAS_DND else dnd.Tk):  # type: ignore[misc]
     def __init__(self):
         super().__init__()
         self.title("NotebookLM 檔案切分工具")
-        self.geometry("750x620")
-        self.minsize(650, 500)
+        # 保持預設視窗大小（不要乘上 NB_SCALING），避免佔滿整個螢幕
+        ui_scale = UI_SCALE
+        geom_w = max(600, int(round(750 * ui_scale)))
+        geom_h = max(480, int(round(620 * ui_scale)))
+        self.geometry(f"{geom_w}x{geom_h}")
+        self.minsize(max(500, int(round(650 * ui_scale))), max(400, int(round(500 * ui_scale))))
 
         if _HAS_DND:
             # 套用 CTk 主題到 tkinterdnd2 的 Tk 視窗
@@ -223,6 +243,8 @@ class App(ctk.CTk if not _HAS_DND else dnd.Tk):  # type: ignore[misc]
     # ── UI 建構 ──────────────────────────────────────────────
 
     def _build_ui(self):
+        # 使用 UI_SCALE（1.0）來維持預設版面大小與間距
+        scale = UI_SCALE
         self.columnconfigure(0, weight=1)
         self.rowconfigure(2, weight=1)
 
@@ -233,7 +255,8 @@ class App(ctk.CTk if not _HAS_DND else dnd.Tk):  # type: ignore[misc]
 
         title_lbl = ctk.CTkLabel(
             header, text="NotebookLM 檔案切分工具",
-            font=ctk.CTkFont(size=18, weight="bold"),
+            font=ctk.CTkFont(family=FONT_FAMILY, size=max(14, int(round(18 * scale))), weight="bold"),
+            text_color=("gray20", "gray80"),
             anchor="w"
         )
         title_lbl.grid(row=0, column=0, sticky="w")
@@ -243,14 +266,14 @@ class App(ctk.CTk if not _HAS_DND else dnd.Tk):  # type: ignore[misc]
             self, on_files=self._add_files,
             fg_color=("gray92", "gray14"),
             border_color=("gray70", "gray30"),
-            height=140,
+            height=max(100, int(round(140 * scale))),
         )
         self._drop_zone.grid(row=1, column=0, sticky="ew", padx=20, pady=(0, 16))
 
         # 工作清單（可捲動）
         self._list_label = ctk.CTkLabel(
             self, text="待切分清單",
-            font=ctk.CTkFont(size=13, weight="bold"),
+            font=ctk.CTkFont(family=FONT_FAMILY, size=max(10, int(round(13 * scale))), weight="bold"),
             anchor="w"
         )
         self._list_label.grid(row=2, column=0, sticky="nw", padx=20, pady=(0, 10))
@@ -262,7 +285,7 @@ class App(ctk.CTk if not _HAS_DND else dnd.Tk):  # type: ignore[misc]
 
         self._empty_lbl = ctk.CTkLabel(
             self._scroll, text="尚未加入任何檔案",
-            text_color=("gray60", "gray50"), font=ctk.CTkFont(size=12),
+            text_color=("gray60", "gray50"), font=ctk.CTkFont(family=FONT_FAMILY, size=max(8, int(round(12 * scale)))),
         )
         self._empty_lbl.grid(row=0, column=0, pady=40)
 
@@ -277,14 +300,14 @@ class App(ctk.CTk if not _HAS_DND else dnd.Tk):  # type: ignore[misc]
             hover_color=("gray70", "gray20"),
             text_color=("gray20", "gray80"),
             border_width=0,
-            corner_radius=8,
+            corner_radius=max(6, int(round(8 * scale))),
             command=self._clear_done,
         )
         self._clear_btn.grid(row=0, column=0, padx=(0, 10))
 
         self._out_lbl = ctk.CTkLabel(
             bottom, text="📁 輸出：output/{日期}/{檔名}/",
-            font=ctk.CTkFont(size=11),
+            font=ctk.CTkFont(family=FONT_FAMILY, size=max(8, int(round(11 * scale)))),
             text_color=("gray50", "gray60"),
             anchor="w",
         )
@@ -296,15 +319,15 @@ class App(ctk.CTk if not _HAS_DND else dnd.Tk):  # type: ignore[misc]
             hover_color=("gray70", "gray20"),
             text_color=("gray20", "gray80"),
             border_width=0,
-            corner_radius=8,
+            corner_radius=max(6, int(round(8 * scale))),
             command=self._open_output,
         )
         self._open_btn.grid(row=0, column=2, padx=(8, 8))
 
         self._start_btn = ctk.CTkButton(
             bottom, text="▶ 開始切分", width=110,
-            font=ctk.CTkFont(size=12, weight="bold"),
-            corner_radius=8,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=max(9, int(round(12 * scale))), weight="bold"),
+            corner_radius=max(6, int(round(8 * scale))),
             command=self._start_all,
         )
         self._start_btn.grid(row=0, column=3, padx=(0, 0))
