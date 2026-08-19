@@ -1,5 +1,4 @@
 import json
-import math
 import shutil
 import subprocess
 from pathlib import Path
@@ -11,6 +10,9 @@ from src.utils.file_utils import VIDEO_EXTENSIONS
 
 MAX_BYTES = 200 * 1024 * 1024  # 200 MB
 SAFETY_FACTOR = 0.95
+MAX_SPLIT_ATTEMPTS = 6  # 單一片段超出大小上限時，最多重切幾次
+MIN_SEGMENT_SECONDS = 2.0  # 重切時秒數下限，避免無窮縮小
+RESHRINK_SAFETY = 0.97  # 依實際檔案大小重新估算秒數時的額外緩衝
 
 
 class MediaSplitter(BaseSplitter):
@@ -37,6 +39,19 @@ class MediaSplitter(BaseSplitter):
             "-i", str(src),
             "-vn", "-c:a", "aac", "-b:a", "128k",
             str(dest),
+        ]
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    def _cut_segment(self, ffmpeg: str, src: Path, start: float, duration: float, out_path: Path) -> None:
+        cmd = [
+            ffmpeg, "-y",
+            "-ss", str(start),
+            "-i", str(src),
+            "-t", str(duration),
+            "-c", "copy",
+            "-avoid_negative_ts", "make_zero",
+            "-map", "0",
+            str(out_path),
         ]
         subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
@@ -84,40 +99,37 @@ class MediaSplitter(BaseSplitter):
                 else:
                     max_seconds = (total_duration * MAX_BYTES / file_size) * SAFETY_FACTOR
 
-                num_parts = math.ceil(total_duration / max_seconds)
                 ffmpeg = get_ffmpeg_path()
+                parts_count = 0
+                start = 0.0
 
-                for i in range(num_parts):
-                    start = i * max_seconds
-                    out_name = f"{stem}, part{i + 1}{output_suffix}"
+                while start < total_duration - 1e-3:
+                    duration = min(max_seconds, total_duration - start)
+                    parts_count += 1
+                    out_name = f"{stem}, part{parts_count}{output_suffix}"
                     out_path = job.output_dir / out_name
 
-                    cmd = [
-                        ffmpeg, "-y",
-                        "-ss", str(start),
-                        "-i", str(src),
-                        "-t", str(max_seconds),
-                        "-c", "copy",
-                        "-avoid_negative_ts", "make_zero",
-                        "-map", "0",
-                        str(out_path),
-                    ]
-                    subprocess.run(
-                        cmd,
-                        check=True,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                    )
+                    for attempt in range(MAX_SPLIT_ATTEMPTS):
+                        self._cut_segment(ffmpeg, src, start, duration, out_path)
+                        out_size = out_path.stat().st_size
+                        if out_size <= MAX_BYTES or duration <= MIN_SEGMENT_SECONDS:
+                            break
+                        # 該片段實際位元率高於全片平均值（VBR），依實際大小重新估算秒數後重切
+                        duration = max(
+                            duration * (MAX_BYTES / out_size) * RESHRINK_SAFETY,
+                            MIN_SEGMENT_SECONDS,
+                        )
 
-                    progress = (i + 1) / num_parts
+                    start += duration
+                    progress = min(start / total_duration, 1.0)
                     job.progress = progress
                     if job.on_progress:
                         job.on_progress(progress)
 
-                job.parts_count = num_parts
+                job.parts_count = parts_count
                 job.status = JobStatus.DONE
                 if job.on_done:
-                    job.on_done(num_parts)
+                    job.on_done(parts_count)
 
             finally:
                 if temp_m4a and temp_m4a.exists():
