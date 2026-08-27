@@ -5,14 +5,14 @@ import platform
 import subprocess
 import threading
 from pathlib import Path
-from tkinter import filedialog, messagebox
 
-import customtkinter as ctk
-try:
-    import tkinterdnd2 as dnd
-    _HAS_DND = True
-except ImportError:
-    _HAS_DND = False
+from PySide6.QtWidgets import (
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
+    QFrame, QPushButton, QProgressBar, QCheckBox, QScrollArea, 
+    QFileDialog, QMessageBox
+)
+from PySide6.QtCore import Qt, Signal, QObject
+from PySide6.QtGui import QDragEnterEvent, QDropEvent
 
 from src.models.job import SplitJob, JobStatus
 from src.splitter import get_splitter
@@ -20,320 +20,453 @@ from src.utils.file_utils import (
     get_output_dir, is_supported, is_media_file, is_video_file, human_size
 )
 
-ctk.set_appearance_mode("System")
-ctk.set_default_color_theme("green")
-
-# UI scaling for layout (keep at 1.0 to preserve default window size)
-UI_SCALE = 1.0
-
-# 選擇系統 UI 字型以改善字體銳利度（Windows 上偏好微軟正黑或 Segoe UI）
-if platform.system() == "Windows":
-    # Traditional Chinese Windows 會有 Microsoft JhengHei UI；若不存在，回退到 Segoe UI
-    FONT_FAMILY = "Microsoft JhengHei UI"
-    # 在某些系統上名稱可能不同，準備備援
-    _try_fallback = False
-else:
-    FONT_FAMILY = "Segoe UI"
-
-_STATUS_COLOR = {
-    JobStatus.PENDING: ("gray60", "gray40"),
-    JobStatus.RUNNING: ("cyan", "cyan"),
-    JobStatus.DONE: ("green2", "green2"),
-    JobStatus.ERROR: ("#FF6B6B", "#FF6B6B"),
+# ── QSS 樣式表 ──────────────────────────────────────────────
+STYLE_SHEET = """
+QMainWindow {
+    background-color: #121214;
 }
 
-_STATUS_TEXT = {
-    JobStatus.PENDING: "等待中",
-    JobStatus.RUNNING: "切分中…",
-    JobStatus.DONE: "完成",
-    JobStatus.ERROR: "錯誤",
+QWidget {
+    font-family: "Microsoft JhengHei UI", "Segoe UI", sans-serif;
+    color: #e4e4e7;
+    font-size: 13px;
 }
 
+QLabel#HeaderTitle {
+    font-size: 20px;
+    font-weight: bold;
+    color: #ffffff;
+}
 
-class FileRow(ctk.CTkFrame):
-    def __init__(self, master, job: SplitJob, **kwargs):
-        scale = UI_SCALE
-        cr = max(1, int(round(10 * scale)))
-        super().__init__(master, corner_radius=cr, border_width=1, border_color=("gray80", "gray25"), **kwargs)
+QFrame#DropZone {
+    background-color: #18181b;
+    border: 2px dashed #3f3f46;
+    border-radius: 12px;
+}
+
+QFrame#DropZone[dragOver="true"] {
+    border: 2px dashed #3b82f6;
+    background-color: #1e293b;
+}
+
+QLabel#DropZoneIcon {
+    font-size: 40px;
+}
+
+QLabel#DropZoneTitle {
+    font-size: 14px;
+    font-weight: bold;
+    color: #f4f4f5;
+}
+
+QLabel#DropZoneSub {
+    font-size: 12px;
+    color: #71717a;
+}
+
+QLabel#SectionTitle {
+    font-size: 13px;
+    font-weight: bold;
+    color: #a1a1aa;
+}
+
+QScrollArea {
+    border: 1px solid #27272a;
+    border-radius: 10px;
+    background-color: #18181b;
+}
+
+QScrollArea > QWidget > QWidget {
+    background-color: #18181b;
+}
+
+QFrame#FileRow {
+    background-color: #1f1f23;
+    border: 1px solid #2d2d30;
+    border-radius: 8px;
+}
+
+QLabel#FileName {
+    font-size: 13px;
+    font-weight: bold;
+    color: #f4f4f5;
+}
+
+QLabel#FileSize {
+    font-size: 11px;
+    color: #a1a1aa;
+}
+
+QCheckBox {
+    font-size: 11px;
+    color: #a1a1aa;
+}
+
+QCheckBox::indicator {
+    width: 14px;
+    height: 14px;
+    border: 1px solid #3f3f46;
+    border-radius: 3px;
+    background-color: #18181b;
+}
+
+QCheckBox::indicator:checked {
+    border: 1px solid #3b82f6;
+    background-color: #3b82f6;
+}
+
+QProgressBar {
+    background-color: #27272a;
+    border: none;
+    border-radius: 3px;
+    height: 6px;
+}
+
+QProgressBar::chunk {
+    background-color: #3b82f6;
+    border-radius: 3px;
+}
+
+QProgressBar#DoneProgress::chunk {
+    background-color: #10b981;
+}
+
+QProgressBar#ErrorProgress::chunk {
+    background-color: #ef4444;
+}
+
+QLabel#StatusLabel {
+    font-size: 11px;
+    color: #a1a1aa;
+}
+
+QLabel#StatusLabel[status="running"] {
+    color: #06b6d4;
+}
+
+QLabel#StatusLabel[status="done"] {
+    color: #10b981;
+}
+
+QLabel#StatusLabel[status="error"] {
+    color: #ef4444;
+}
+
+QPushButton {
+    background-color: #27272a;
+    border: 1px solid #3f3f46;
+    border-radius: 6px;
+    padding: 6px 12px;
+    color: #e4e4e7;
+    font-weight: 500;
+}
+
+QPushButton:hover {
+    background-color: #323235;
+    border-color: #52525b;
+}
+
+QPushButton:pressed {
+    background-color: #1c1c1e;
+}
+
+QPushButton#StartBtn {
+    background-color: #2563eb;
+    border: 1px solid #3b82f6;
+    color: #ffffff;
+    font-weight: bold;
+}
+
+QPushButton#StartBtn:hover {
+    background-color: #3b82f6;
+    border-color: #60a5fa;
+}
+
+QPushButton#StartBtn:pressed {
+    background-color: #1d4ed8;
+}
+
+QScrollBar:vertical {
+    border: none;
+    background: #18181b;
+    width: 8px;
+    margin: 0px 0 0px 0;
+}
+
+QScrollBar::handle:vertical {
+    background: #27272a;
+    min-height: 20px;
+    border-radius: 4px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: #3f3f46;
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+"""
+
+# ── 執行緒安全訊號橋接器 ──────────────────────────────────────
+class JobSignals(QObject):
+    progress = Signal(float)
+    status = Signal(str)
+    done = Signal(int)
+    error = Signal(str)
+
+
+# ── 檔案清單列元件 ───────────────────────────────────────────
+class FileRow(QFrame):
+    def __init__(self, job: SplitJob, parent=None):
+        super().__init__(parent)
+        self.setObjectName("FileRow")
         self.job = job
-        self.columnconfigure(1, weight=1)
-
-        # 第一行：檔名 + 大小 + 選項
-        name_frame = ctk.CTkFrame(self, fg_color="transparent")
-        name_frame.grid(row=0, column=0, columnspan=3, sticky="ew", padx=12, pady=(10, 6))
-        name_frame.columnconfigure(0, weight=1)
-
-        self._name_lbl = ctk.CTkLabel(
-            name_frame, text=job.source_path.name,
-            font=ctk.CTkFont(family=FONT_FAMILY, size=max(8, int(round(13 * scale))), weight="bold"),
-            anchor="w",
-        )
-        self._name_lbl.grid(row=0, column=0, sticky="w")
-
+        
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(6)
+        
+        # 第一列：檔名、檔案大小、轉換 m4a 選框
+        row1 = QHBoxLayout()
+        row1.setContentsMargins(0, 0, 0, 0)
+        
+        self.name_lbl = QLabel(job.source_path.name)
+        self.name_lbl.setObjectName("FileName")
+        row1.addWidget(self.name_lbl, stretch=1)
+        
         size_bytes = job.source_path.stat().st_size if job.source_path.exists() else 0
-        self._size_lbl = ctk.CTkLabel(
-            name_frame, text=human_size(size_bytes),
-            font=ctk.CTkFont(family=FONT_FAMILY, size=max(8, int(round(11 * scale)))),
-            text_color=("gray50", "gray60"),
-        )
-        self._size_lbl.grid(row=0, column=1, sticky="e", padx=(12, 0))
-
+        self.size_lbl = QLabel(human_size(size_bytes))
+        self.size_lbl.setObjectName("FileSize")
+        row1.addWidget(self.size_lbl)
+        
         if is_video_file(job.source_path):
-            self._m4a_var = ctk.BooleanVar(value=False)
-            self._m4a_cb = ctk.CTkCheckBox(
-                name_frame, text="轉換為 m4a",
-                variable=self._m4a_var,
-                command=self._toggle_m4a,
-                font=ctk.CTkFont(family=FONT_FAMILY, size=max(8, int(round(11 * scale)))),
-            )
-            self._m4a_cb.grid(row=0, column=2, padx=(12, 0), sticky="e")
+            self.m4a_cb = QCheckBox("轉換為 m4a")
+            self.m4a_cb.setChecked(job.convert_to_m4a)
+            self.m4a_cb.stateChanged.connect(self._toggle_m4a)
+            row1.addWidget(self.m4a_cb)
         else:
-            self._m4a_var = None
-            self._m4a_cb = None
+            self.m4a_cb = None
+            
+        layout.addLayout(row1)
+        
+        # 第二列：進度條、狀態標籤
+        row2 = QHBoxLayout()
+        row2.setContentsMargins(0, 0, 0, 0)
+        
+        self.progress = QProgressBar()
+        self.progress.setMaximum(100)
+        self.progress.setValue(0)
+        self.progress.setTextVisible(False)
+        self.progress.setFixedHeight(6)
+        row2.addWidget(self.progress, stretch=1)
+        
+        self.status_lbl = QLabel("等待中")
+        self.status_lbl.setObjectName("StatusLabel")
+        self.status_lbl.setMinimumWidth(85)
+        self.status_lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        row2.addWidget(self.status_lbl)
+        
+        layout.addLayout(row2)
+        
+    def _toggle_m4a(self, state: int) -> None:
+        self.job.convert_to_m4a = self.m4a_cb.isChecked()
 
-        # 第二行：進度條 + 狀態
-        progress_frame = ctk.CTkFrame(self, fg_color="transparent")
-        progress_frame.grid(row=1, column=0, columnspan=3, sticky="ew", padx=12, pady=(0, 10))
-        progress_frame.columnconfigure(0, weight=1)
-
-        self._progress = ctk.CTkProgressBar(progress_frame, height=max(4, int(round(6 * scale))), corner_radius=max(1, int(round(3 * scale))))
-        self._progress.set(0)
-        self._progress.grid(row=0, column=0, sticky="ew")
-
-        self._status_lbl = ctk.CTkLabel(
-            progress_frame, text="等待中",
-            font=ctk.CTkFont(family=FONT_FAMILY, size=max(8, int(round(10 * scale)))),
-            text_color=("gray50", "gray60"),
-            width=70,
-            anchor="e",
-        )
-        self._status_lbl.grid(row=0, column=1, sticky="e", padx=(8, 0))
-
-        self.grid_columnconfigure(0, weight=1)
-
-    def _toggle_m4a(self) -> None:
-        if self._m4a_var is not None:
-            self.job.convert_to_m4a = self._m4a_var.get()
-
-    # ── 回呼（從工作執行緒呼叫，需透過 after 切回主執行緒）──
-
+    # ── UI 更新方法 ──
     def update_status(self, text: str) -> None:
-        self.after(0, lambda: self._status_lbl.configure(
-            text=text,
-            text_color=("cyan", "cyan"),
-        ))
+        self.status_lbl.setText(text)
+        self.status_lbl.setProperty("status", "running")
+        self.status_lbl.style().unpolish(self.status_lbl)
+        self.status_lbl.style().polish(self.status_lbl)
 
     def update_progress(self, value: float) -> None:
-        self.after(0, lambda: self._progress.set(value))
-        self.after(0, lambda: self._status_lbl.configure(
-            text=f"{int(value * 100)}%",
-            text_color=("cyan", "cyan"),
-        ))
+        val_percent = int(value * 100)
+        self.progress.setValue(val_percent)
+        self.status_lbl.setText(f"{val_percent}%")
+        self.status_lbl.setProperty("status", "running")
+        self.status_lbl.style().unpolish(self.status_lbl)
+        self.status_lbl.style().polish(self.status_lbl)
 
     def mark_done(self, parts: int) -> None:
-        self.after(0, lambda: self._progress.set(1.0))
-        self.after(0, lambda: self._status_lbl.configure(
-            text=f"完成（{parts} 個）",
-            text_color=("green2", "green2"),
-        ))
+        self.progress.setValue(100)
+        self.progress.setObjectName("DoneProgress")
+        self.progress.style().unpolish(self.progress)
+        self.progress.style().polish(self.progress)
+        
+        self.status_lbl.setText(f"完成（{parts} 個）")
+        self.status_lbl.setProperty("status", "done")
+        self.status_lbl.style().unpolish(self.status_lbl)
+        self.status_lbl.style().polish(self.status_lbl)
 
     def mark_error(self, msg: str) -> None:
-        self.after(0, lambda: self._status_lbl.configure(
-            text="錯誤",
-            text_color=("#FF6B6B", "#FF6B6B"),
-        ))
-        self.after(0, lambda: self._progress.configure(progress_color="#FF6B6B"))
+        self.progress.setValue(100)
+        self.progress.setObjectName("ErrorProgress")
+        self.progress.style().unpolish(self.progress)
+        self.progress.style().polish(self.progress)
+        
+        self.status_lbl.setText("錯誤")
+        self.status_lbl.setProperty("status", "error")
+        self.status_lbl.style().unpolish(self.status_lbl)
+        self.status_lbl.style().polish(self.status_lbl)
 
 
-class DropZone(ctk.CTkFrame):
-    """可拖放檔案的區域，或點擊觸發選擇對話框。"""
-
-    def __init__(self, master, on_files, **kwargs):
-        scale = UI_SCALE
-        super().__init__(master, corner_radius=max(4, int(round(14 * scale))), border_width=2, **kwargs)
-        self._on_files = on_files
-
-        # 內容框架
-        content = ctk.CTkFrame(self, fg_color="transparent")
-        content.pack(expand=True, fill="both", padx=20, pady=20)
-
-        # 圖標
-        icon_lbl = ctk.CTkLabel(
-            content,
-            text="📁",
-            font=(FONT_FAMILY, max(18, int(round(48 * scale)))),
-        )
-        icon_lbl.pack(pady=(0, 8))
-
-        # 主文字
-        self._label = ctk.CTkLabel(
-            content,
-            text="拖放檔案 / 資料夾到此處",
-            font=ctk.CTkFont(family=FONT_FAMILY, size=max(10, int(round(15 * scale))), weight="bold"),
-        )
-        self._label.pack()
-
-        # 次級文字
-        sub_lbl = ctk.CTkLabel(
-            content,
-            text="或點擊選擇檔案",
-            font=ctk.CTkFont(family=FONT_FAMILY, size=max(8, int(round(12 * scale)))),
-            text_color=("gray50", "gray60"),
-        )
-        sub_lbl.pack(pady=(4, 0))
-
-        self.bind("<Button-1>", self._click)
-        self._label.bind("<Button-1>", self._click)
-        icon_lbl.bind("<Button-1>", self._click)
-        sub_lbl.bind("<Button-1>", self._click)
-
-        if _HAS_DND:
-            self.drop_target_register(dnd.DND_FILES)  # type: ignore[attr-defined]
-            self.dnd_bind("<<Drop>>", self._on_drop)  # type: ignore[attr-defined]
-
-    def _click(self, _event=None):
-        paths = filedialog.askopenfilenames(
-            title="選擇要切分的檔案",
-            filetypes=[
-                ("支援的格式", "*.mp3 *.mp4 *.wav *.m4a *.aac *.flac *.ogg *.mkv "
-                              "*.mov *.avi *.webm *.wma *.opus *.txt *.md"),
-                ("音訊/影片", "*.mp3 *.mp4 *.wav *.m4a *.aac *.flac *.ogg "
-                              "*.mkv *.mov *.avi *.webm *.wma *.opus"),
-                ("文字檔", "*.txt *.md"),
-                ("所有檔案", "*.*"),
-            ],
+# ── 拖放檔案區元件 ───────────────────────────────────────────
+class DropZone(QFrame):
+    def __init__(self, on_files, parent=None):
+        super().__init__(parent)
+        self.setObjectName("DropZone")
+        self.on_files = on_files
+        self.setAcceptDrops(True)
+        self.setCursor(Qt.PointingHandCursor)
+        
+        layout = QVBoxLayout(self)
+        layout.setAlignment(Qt.AlignCenter)
+        layout.setSpacing(8)
+        layout.setContentsMargins(20, 24, 20, 24)
+        
+        self.icon_lbl = QLabel("📁")
+        self.icon_lbl.setObjectName("DropZoneIcon")
+        self.icon_lbl.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.icon_lbl)
+        
+        self.title_lbl = QLabel("拖放檔案 / 資料夾到此處")
+        self.title_lbl.setObjectName("DropZoneTitle")
+        self.title_lbl.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.title_lbl)
+        
+        self.sub_lbl = QLabel("或點擊選擇檔案")
+        self.sub_lbl.setObjectName("DropZoneSub")
+        self.sub_lbl.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.sub_lbl)
+        
+    def dragEnterEvent(self, event: QDragEnterEvent) -> None:
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+            self.setProperty("dragOver", True)
+            self.style().unpolish(self)
+            self.style().polish(self)
+            
+    def dragLeaveEvent(self, event) -> None:
+        self.setProperty("dragOver", False)
+        self.style().unpolish(self)
+        self.style().polish(self)
+        
+    def dropEvent(self, event: QDropEvent) -> None:
+        self.setProperty("dragOver", False)
+        self.style().unpolish(self)
+        self.style().polish(self)
+        
+        paths = []
+        for url in event.mimeData().urls():
+            local_path = url.toLocalFile()
+            if local_path:
+                paths.append(Path(local_path))
+        if paths:
+            self.on_files(paths)
+            
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.LeftButton:
+            self.select_files()
+            
+    def select_files(self) -> None:
+        paths, _ = QFileDialog.getOpenFileNames(
+            self,
+            "選擇要切分的檔案",
+            "",
+            "支援的格式 (*.mp3 *.mp4 *.wav *.m4a *.aac *.flac *.ogg *.mkv *.mov *.avi *.webm *.wma *.opus *.txt *.md);;"
+            "音訊/影片 (*.mp3 *.mp4 *.wav *.m4a *.aac *.flac *.ogg *.mkv *.mov *.avi *.webm *.wma *.opus);;"
+            "文字檔 (*.txt *.md);;"
+            "所有檔案 (*.*)"
         )
         if paths:
-            self._on_files([Path(p) for p in paths])
-
-    def _on_drop(self, event):
-        # tkinterdnd2 回傳的路徑列表（可能含空格，用 {} 包裹）
-        raw = event.data
-        paths: list[Path] = []
-        # 解析 {path with spaces} 和 plain/path 兩種格式
-        import re
-        for m in re.finditer(r'\{([^}]+)\}|(\S+)', raw):
-            p = m.group(1) or m.group(2)
-            paths.append(Path(p))
-        if paths:
-            self._on_files(paths)
+            self.on_files([Path(p) for p in paths])
 
 
-class App(ctk.CTk if not _HAS_DND else dnd.Tk):  # type: ignore[misc]
+# ── 主視窗 ──────────────────────────────────────────────────
+class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.title("NotebookLM 檔案切分工具")
-        # 保持預設視窗大小（不要乘上 NB_SCALING），避免佔滿整個螢幕
-        ui_scale = UI_SCALE
-        geom_w = max(600, int(round(750 * ui_scale)))
-        geom_h = max(480, int(round(620 * ui_scale)))
-        self.geometry(f"{geom_w}x{geom_h}")
-        self.minsize(max(500, int(round(650 * ui_scale))), max(400, int(round(500 * ui_scale))))
-
-        if _HAS_DND:
-            # 套用 CTk 主題到 tkinterdnd2 的 Tk 視窗
-            ctk.set_appearance_mode("System")
-
+        self.setWindowTitle("NotebookLM 檔案切分工具")
+        self.resize(750, 620)
+        self.setMinimumSize(650, 500)
+        
         self._jobs: list[SplitJob] = []
-        self._rows: dict[int, FileRow] = {}   # id(job) → FileRow
+        self._rows: dict[int, FileRow] = {}  # id(job) -> FileRow
         self._lock = threading.Lock()
-
-        self._build_ui()
-
-    # ── UI 建構 ──────────────────────────────────────────────
-
-    def _build_ui(self):
-        # 使用 UI_SCALE（1.0）來維持預設版面大小與間距
-        scale = UI_SCALE
-        self.columnconfigure(0, weight=1)
-        self.rowconfigure(2, weight=1)
-
+        
+        # 套用樣式表
+        self.setStyleSheet(STYLE_SHEET)
+        
+        # 主面板與版面配置
+        main_widget = QWidget()
+        self.setCentralWidget(main_widget)
+        
+        main_layout = QVBoxLayout(main_widget)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(16)
+        
         # 頂部標題
-        header = ctk.CTkFrame(self, fg_color="transparent")
-        header.grid(row=0, column=0, sticky="ew", padx=20, pady=(20, 8))
-        header.columnconfigure(0, weight=1)
-
-        title_lbl = ctk.CTkLabel(
-            header, text="NotebookLM 檔案切分工具",
-            font=ctk.CTkFont(family=FONT_FAMILY, size=max(14, int(round(18 * scale))), weight="bold"),
-            text_color=("gray20", "gray80"),
-            anchor="w"
-        )
-        title_lbl.grid(row=0, column=0, sticky="w")
-
-        # 拖放區
-        self._drop_zone = DropZone(
-            self, on_files=self._add_files,
-            fg_color=("gray92", "gray14"),
-            border_color=("gray70", "gray30"),
-            height=max(100, int(round(140 * scale))),
-        )
-        self._drop_zone.grid(row=1, column=0, sticky="ew", padx=20, pady=(0, 16))
-
-        # 工作清單（可捲動）
-        self._list_label = ctk.CTkLabel(
-            self, text="待切分清單",
-            font=ctk.CTkFont(family=FONT_FAMILY, size=max(10, int(round(13 * scale))), weight="bold"),
-            anchor="w"
-        )
-        self._list_label.grid(row=2, column=0, sticky="nw", padx=20, pady=(0, 10))
-
-        self._scroll = ctk.CTkScrollableFrame(self, label_text="", corner_radius=10)
-        self._scroll.grid(row=3, column=0, sticky="nsew", padx=20, pady=(0, 12))
-        self._scroll.columnconfigure(0, weight=1)
-        self.rowconfigure(3, weight=1)
-
-        self._empty_lbl = ctk.CTkLabel(
-            self._scroll, text="尚未加入任何檔案",
-            text_color=("gray60", "gray50"), font=ctk.CTkFont(family=FONT_FAMILY, size=max(8, int(round(12 * scale)))),
-        )
-        self._empty_lbl.grid(row=0, column=0, pady=40)
-
-        # 底部工具列
-        bottom = ctk.CTkFrame(self, fg_color="transparent")
-        bottom.grid(row=4, column=0, sticky="ew", padx=20, pady=(0, 16))
-        bottom.columnconfigure(1, weight=1)
-
-        self._clear_btn = ctk.CTkButton(
-            bottom, text="清除完成項目", width=120,
-            fg_color=("gray75", "gray25"),
-            hover_color=("gray70", "gray20"),
-            text_color=("gray20", "gray80"),
-            border_width=0,
-            corner_radius=max(6, int(round(8 * scale))),
-            command=self._clear_done,
-        )
-        self._clear_btn.grid(row=0, column=0, padx=(0, 10))
-
-        self._out_lbl = ctk.CTkLabel(
-            bottom, text="📁 輸出：output/{日期}/{檔名}/",
-            font=ctk.CTkFont(family=FONT_FAMILY, size=max(8, int(round(11 * scale)))),
-            text_color=("gray50", "gray60"),
-            anchor="w",
-        )
-        self._out_lbl.grid(row=0, column=1, sticky="w")
-
-        self._open_btn = ctk.CTkButton(
-            bottom, text="開啟資料夾", width=100,
-            fg_color=("gray75", "gray25"),
-            hover_color=("gray70", "gray20"),
-            text_color=("gray20", "gray80"),
-            border_width=0,
-            corner_radius=max(6, int(round(8 * scale))),
-            command=self._open_output,
-        )
-        self._open_btn.grid(row=0, column=2, padx=(8, 8))
-
-        self._start_btn = ctk.CTkButton(
-            bottom, text="▶ 開始切分", width=110,
-            font=ctk.CTkFont(family=FONT_FAMILY, size=max(9, int(round(12 * scale))), weight="bold"),
-            corner_radius=max(6, int(round(8 * scale))),
-            command=self._start_all,
-        )
-        self._start_btn.grid(row=0, column=3, padx=(0, 0))
+        self.title_lbl = QLabel("NotebookLM 檔案切分工具")
+        self.title_lbl.setObjectName("HeaderTitle")
+        main_layout.addWidget(self.title_lbl)
+        
+        # 拖放檔案區
+        self.drop_zone = DropZone(on_files=self._add_files)
+        self.drop_zone.setFixedHeight(140)
+        main_layout.addWidget(self.drop_zone)
+        
+        # 區段標題
+        self.list_title = QLabel("待切分清單")
+        self.list_title.setObjectName("SectionTitle")
+        main_layout.addWidget(self.list_title)
+        
+        # 滾動區域 (清單)
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setObjectName("ListScroll")
+        
+        self.scroll_widget = QWidget()
+        self.list_layout = QVBoxLayout(self.scroll_widget)
+        self.list_layout.setContentsMargins(8, 8, 8, 8)
+        self.list_layout.setSpacing(8)
+        self.list_layout.setAlignment(Qt.AlignTop)
+        
+        self.scroll.setWidget(self.scroll_widget)
+        main_layout.addWidget(self.scroll)
+        
+        # 底部控制欄
+        bottom_frame = QWidget()
+        bottom_layout = QHBoxLayout(bottom_frame)
+        bottom_layout.setContentsMargins(0, 0, 0, 0)
+        bottom_layout.setSpacing(12)
+        
+        self.clear_btn = QPushButton("清除完成項目")
+        self.clear_btn.setObjectName("ClearBtn")
+        self.clear_btn.clicked.connect(self._clear_done)
+        bottom_layout.addWidget(self.clear_btn)
+        
+        self.out_lbl = QLabel("📁 輸出：output/{日期}/{檔名}/")
+        self.out_lbl.setObjectName("OutPathLabel")
+        self.out_lbl.setStyleSheet("color: #71717a; font-size: 11px;")
+        bottom_layout.addWidget(self.out_lbl, stretch=1)
+        
+        self.open_btn = QPushButton("開啟資料夾")
+        self.open_btn.setObjectName("OpenFolderBtn")
+        self.open_btn.clicked.connect(self._open_output)
+        bottom_layout.addWidget(self.open_btn)
+        
+        self.start_btn = QPushButton("▶ 開始切分")
+        self.start_btn.setObjectName("StartBtn")
+        self.start_btn.clicked.connect(self._start_all)
+        bottom_layout.addWidget(self.start_btn)
+        
+        main_layout.addWidget(bottom_frame)
+        
+        # 建立初始狀態 (顯示空清單提示)
+        self.empty_lbl = None
+        self._refresh_list()
 
     # ── 檔案管理 ─────────────────────────────────────────────
-
     def _add_files(self, paths: list[Path]) -> None:
         added = 0
         unsupported: list[str] = []
@@ -352,15 +485,16 @@ class App(ctk.CTk if not _HAS_DND else dnd.Tk):  # type: ignore[misc]
                     added += 1
                 elif r == "unsupported":
                     unsupported.append(path.name)
-
+                    
         if added:
             self._refresh_list()
         if unsupported:
-            messagebox.showwarning(
+            QMessageBox.warning(
+                self,
                 "不支援的檔案",
-                "以下檔案格式不支援，已略過：\n" + "\n".join(unsupported[:10]),
+                "以下檔案格式不支援，已略過：\n" + "\n".join(unsupported[:10])
             )
-
+            
     def _try_add(self, path: Path) -> str:
         if not is_supported(path):
             return "unsupported"
@@ -380,53 +514,83 @@ class App(ctk.CTk if not _HAS_DND else dnd.Tk):  # type: ignore[misc]
         return "ok"
 
     def _refresh_list(self) -> None:
-        # 清空捲動區再重新渲染
-        for widget in self._scroll.winfo_children():
-            widget.destroy()
-        self._rows.clear()
-
-        if not self._jobs:
-            self._empty_lbl = ctk.CTkLabel(
-                self._scroll, text="尚未加入任何檔案",
-                text_color=("gray60", "gray50"), font=ctk.CTkFont(size=12),
-            )
-            self._empty_lbl.grid(row=0, column=0, pady=40)
-            return
-
-        for idx, job in enumerate(self._jobs):
-            row = FileRow(self._scroll, job, fg_color=("gray88", "gray16"))
-            row.grid(row=idx, column=0, sticky="ew", pady=4)
-            self._rows[id(job)] = row
-
-            # 若已有狀態（重新整理後還原進度顯示）
-            if job.status == JobStatus.DONE:
-                row.mark_done(job.parts_count)
-            elif job.status == JobStatus.ERROR:
-                row.mark_error(job.error_msg or "")
-            elif job.status == JobStatus.RUNNING:
-                row.update_progress(job.progress)
+        with self._lock:
+            # 1. 移除不存在於 _jobs 的 row widgets
+            current_job_ids = {id(j) for j in self._jobs}
+            removed_ids = []
+            for job_id, row in list(self._rows.items()):
+                if job_id not in current_job_ids:
+                    self.list_layout.removeWidget(row)
+                    row.deleteLater()
+                    removed_ids.append(job_id)
+            for job_id in removed_ids:
+                del self._rows[job_id]
+                
+            # 2. 如果目前有任務且顯示空清單提示，則清除提示
+            if self.empty_lbl is not None:
+                if self._jobs:
+                    self.list_layout.removeWidget(self.empty_lbl)
+                    self.empty_lbl.deleteLater()
+                    self.empty_lbl = None
+            
+            # 3. 補齊新增任務的 row widgets
+            for job in self._jobs:
+                job_id = id(job)
+                if job_id not in self._rows:
+                    row = FileRow(job)
+                    self.list_layout.addWidget(row)
+                    self._rows[job_id] = row
+                    
+                    # 恢復進度與狀態顯示
+                    if job.status == JobStatus.DONE:
+                        row.mark_done(job.parts_count)
+                    elif job.status == JobStatus.ERROR:
+                        row.mark_error(job.error_msg or "")
+                    elif job.status == JobStatus.RUNNING:
+                        row.update_progress(job.progress)
+            
+            # 4. 如果完全沒有任務且未顯示空清單提示，則顯示
+            if not self._jobs and self.empty_lbl is None:
+                self.empty_lbl = QLabel("尚未加入任何檔案")
+                self.empty_lbl.setObjectName("EmptyLabel")
+                self.empty_lbl.setStyleSheet("color: #71717a; font-size: 13px; padding: 40px;")
+                self.empty_lbl.setAlignment(Qt.AlignCenter)
+                self.list_layout.addWidget(self.empty_lbl)
 
     def _clear_done(self) -> None:
         with self._lock:
             self._jobs = [j for j in self._jobs if j.status != JobStatus.DONE]
         self._refresh_list()
 
-    # ── 切分執行 ─────────────────────────────────────────────
-
+    # ── 切分邏輯與執行 ──────────────────────────────────────────
     def _start_all(self) -> None:
         pending = [j for j in self._jobs if j.status == JobStatus.PENDING]
         if not pending:
-            messagebox.showinfo("提示", "沒有等待切分的檔案。")
+            QMessageBox.information(self, "提示", "沒有等待切分的檔案。")
             return
-
+            
         for job in pending:
             row = self._rows.get(id(job))
             if row is None:
                 continue
-            job.on_progress = row.update_progress
-            job.on_done = row.mark_done
-            job.on_error = row.mark_error
-            job.on_status = row.update_status
+                
+            # 建立 Job-specific 訊號橋接器
+            signals = JobSignals()
+            signals.progress.connect(row.update_progress)
+            signals.status.connect(row.update_status)
+            signals.done.connect(row.mark_done)
+            signals.error.connect(row.mark_error)
+            
+            # 將工作進度回呼綁定到訊號發送
+            job.on_progress = lambda val, sig=signals: sig.progress.emit(val)
+            job.on_status = lambda text, sig=signals: sig.status.emit(text)
+            job.on_done = lambda parts, sig=signals: sig.done.emit(parts)
+            job.on_error = lambda msg, sig=signals: sig.error.emit(msg)
+            
+            # 保持 Reference 避免信號被回收
+            job._signals = signals
+            
+            # 啟動背景工作執行緒
             t = threading.Thread(target=self._run_job, args=(job,), daemon=True)
             t.start()
 
@@ -438,15 +602,20 @@ class App(ctk.CTk if not _HAS_DND else dnd.Tk):  # type: ignore[misc]
         except ValueError as exc:
             job.status = JobStatus.ERROR
             job.error_msg = str(exc)
-            row = self._rows.get(id(job))
-            if row:
-                row.mark_error(str(exc))
+            if job.on_error:
+                job.on_error(str(exc))
 
     # ── 輸出資料夾 ───────────────────────────────────────────
-
     def _open_output(self) -> None:
         out = Path("output")
         if not out.exists():
-            messagebox.showinfo("提示", "output 資料夾尚未建立，請先執行切分。")
+            QMessageBox.information(self, "提示", "output 資料夾尚未建立，請先執行切分。")
             return
-        os.startfile(str(out.resolve()))
+        
+        # 根據系統開啟資料夾
+        if platform.system() == "Windows":
+            os.startfile(str(out.resolve()))
+        elif platform.system() == "Darwin": # macOS
+            subprocess.run(["open", str(out.resolve())])
+        else: # Linux
+            subprocess.run(["xdg-open", str(out.resolve())])

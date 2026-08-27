@@ -73,8 +73,6 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     python -m PyInstaller --windowed --onedir \
       --name "NotebookLM切分工具" \
       --add-data "assets:assets" \
-      --collect-all tkinterdnd2 \
-      --collect-all customtkinter \
       main.py
     OUTPUT_PATH="dist/NotebookLM切分工具.app"
 else
@@ -83,8 +81,6 @@ else
     python -m PyInstaller --onefile --windowed \
       --name "NotebookLM切分工具" \
       --add-data "assets:assets" \
-      --collect-all tkinterdnd2 \
-      --collect-all customtkinter \
       main.py
     OUTPUT_PATH="dist/NotebookLM切分工具"
 fi
